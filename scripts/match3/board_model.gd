@@ -716,12 +716,16 @@ func shuffle() -> Array:
 			solved = true
 			break
 
-	if not solved:
-		# Very unlikely fallback: recolor normal pieces so the board is valid.
+	# Very unlikely fallback: recolor the normal pieces (keeping their ids, so
+	# the view can simply refresh them) until the board is valid.
+	var recolor_attempts := 0
+	while not solved and recolor_attempts < 100:
+		recolor_attempts += 1
 		for cell in cells:
 			var piece := get_piece(cell)
 			if piece.special == Special.NONE:
-				piece.color = _pick_color_without_match(cell)
+				piece.color = _random_color()
+		solved = find_matches().is_empty() and not find_possible_move().is_empty()
 
 	var moves: Array = []
 	for cell in cells:

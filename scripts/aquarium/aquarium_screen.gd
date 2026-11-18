@@ -277,7 +277,8 @@ func _gui_input(event: InputEvent) -> void:
 	var button := event as InputEventMouseButton
 	if button == null or not button.pressed or button.button_index != MOUSE_BUTTON_LEFT:
 		return
-	if button.position.y > _sand_top or _shop != null:
+	# Ignore taps on the HUD at the top, on the sand, or while the shop is open.
+	if button.position.y < TOP_RESERVED or button.position.y > _sand_top or _shop != null:
 		return
 	# Drop a few pellets spread around the tap.
 	for i in 3:
