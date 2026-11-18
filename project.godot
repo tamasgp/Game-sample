@@ -1,0 +1,58 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; (We wrote it by hand for this sample — every setting below is explained.)
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Fishdom Sample"
+config/description="A learning sample: match-3 puzzle + aquarium decorating, written in GDScript."
+; The first scene Godot opens when the game starts.
+run/main_scene="res://scenes/main_menu.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+; Autoloads are scripts Godot creates once at startup and keeps alive across
+; scene changes. They behave like global singletons. The leading "*" means
+; "also make it available as a global variable with this name".
+GameState="*res://scripts/autoload/game_state.gd"
+
+[display]
+
+; Design the game for a 720x1280 portrait phone screen...
+window/size/viewport_width=720
+window/size/viewport_height=1280
+; ...and make the desktop window a bit smaller so it fits on a monitor.
+window/size/window_width_override=450
+window/size/window_height_override=800
+; "canvas_items" scales the 2D scene to fit the window. "expand" keeps the
+; aspect ratio but lets the visible area grow on taller/wider screens instead of
+; adding black bars. Our UI uses anchors/containers, so it adapts.
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+; 1 = portrait on phones/tablets.
+window/handheld/orientation=1
+
+[input_devices]
+
+; On phones, a finger touch is also delivered as a left mouse click.
+; This lets us write ONE input handler (for mouse events) that works everywhere.
+pointing/emulate_mouse_from_touch=true
+
+[rendering]
+
+; The "Compatibility" renderer (OpenGL ES 3 / WebGL 2) runs on the widest range
+; of devices, including web browsers and older Android phones. It is the right
+; choice for a simple 2D game.
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.02, 0.1, 0.25, 1)
