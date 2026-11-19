@@ -15,18 +15,23 @@
 class_name UIStyle
 extends RefCounted
 
-# A small palette keeps the game looking consistent.
-const WATER_TOP := Color(0.1, 0.55, 0.85)
-const WATER_BOTTOM := Color(0.02, 0.15, 0.4)
-const PANEL := Color(0.05, 0.2, 0.4, 0.92)
-const PANEL_BORDER := Color(0.55, 0.85, 1.0)
+# A small palette keeps the game looking consistent. Garden theme: fresh
+# greens for backgrounds, warm wood/cream for panels.
+const BG_TOP := Color(0.45, 0.75, 0.35)
+const BG_BOTTOM := Color(0.15, 0.4, 0.15)
+const PANEL := Color(0.25, 0.16, 0.08, 0.93)
+const PANEL_BORDER := Color(1.0, 0.85, 0.55)
 const ACCENT := Color(1.0, 0.78, 0.2)
 const BUTTON := Color(0.15, 0.6, 0.35)
 const BUTTON_HOVER := Color(0.2, 0.72, 0.42)
 const BUTTON_PRESSED := Color(0.1, 0.45, 0.25)
 const BUTTON_DISABLED := Color(0.3, 0.35, 0.4)
 const TEXT := Color(1, 1, 1)
-const TEXT_DIM := Color(0.75, 0.85, 0.95)
+const TEXT_DIM := Color(0.95, 0.88, 0.72)
+const COIN := Color(1.0, 0.82, 0.2)
+const HEART := Color(0.95, 0.25, 0.35)
+const ORANGE := Color(0.9, 0.5, 0.1)
+const BLUE := Color(0.2, 0.45, 0.8)
 
 
 ## Creates a Label with a given font size and color.
@@ -39,7 +44,7 @@ static func label(text: String, font_size: int = 28, color: Color = TEXT) -> Lab
 	l.add_theme_font_size_override("font_size", font_size)
 	l.add_theme_color_override("font_color", color)
 	# A dark outline keeps text readable on top of the bright water.
-	l.add_theme_color_override("font_outline_color", Color(0, 0.05, 0.15))
+	l.add_theme_color_override("font_outline_color", Color(0.12, 0.06, 0.02))
 	l.add_theme_constant_override("outline_size", maxi(2, int(font_size / 8.0)))
 	return l
 
@@ -131,3 +136,48 @@ static func draw_outline(canvas: CanvasItem, points: PackedVector2Array, color: 
 	var closed := points.duplicate()
 	closed.append(points[0])
 	canvas.draw_polyline(closed, color, width, true)
+
+
+## Points of a square with rounded corners, centered on (0, 0).
+## Four quarter circles (one per corner) joined into one outline.
+static func rounded_square_points(half: float, corner: float) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	var corners := [
+		Vector2(half - corner, -half + corner),
+		Vector2(half - corner, half - corner),
+		Vector2(-half + corner, half - corner),
+		Vector2(-half + corner, -half + corner),
+	]
+	for i in 4:
+		var start_angle := -PI / 2.0 + i * PI / 2.0
+		for step in 5:
+			var angle := start_angle + step * (PI / 2.0) / 4.0
+			points.append(corners[i] + Vector2(cos(angle), sin(angle)) * corner)
+	return points
+
+
+## A small Control showing a board piece (normal or special). Used for goal
+## icons and booster buttons. It reuses the real TileView drawing code.
+static func piece_icon(color: int, special: int, icon_size: float = 56.0) -> Control:
+	var holder := Control.new()
+	holder.custom_minimum_size = Vector2(icon_size, icon_size)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tile := TileView.new()
+	tile.setup(BoardModel.Piece.new(0, color, special), 80.0)
+	tile.position = Vector2(icon_size, icon_size) / 2.0
+	tile.scale = Vector2.ONE * (icon_size / 80.0) * 1.1
+	holder.add_child(tile)
+	return holder
+
+
+## An HBox with an icon and a label, e.g. [heart] 5. Returns the box; the
+## label is its second child, reachable with get_child(1).
+static func icon_counter(kind: String, text: String, font_size: int = 28) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(IconView.new(kind, 40.0))
+	var l := label(text, font_size)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	row.add_child(l)
+	return row

@@ -1,18 +1,31 @@
-## GameScreen: one puzzle level. It connects all the match-3 pieces together.
+## GameScreen: one puzzle level. It wires all the match-3 parts together.
 ##
-##   LevelData ──(level dictionary)──► GameScreen ──creates──► BoardModel
-##                                         │                     ▲
-##                                         │ creates             │ reads/changes
-##                                         ▼                     │
-##                                     BoardView ────────────────┘
+##     GameState.current_level
+##            │
+##            ▼
+##     LevelData ──level dictionary──► GameScreen ──creates──► BoardModel
+##                                         │                      ▲
+##                                         │ creates              │ reads / changes
+##                                         ▼                      │
+##                                     BoardView ─────────────────┘
 ##                                         │
-##                                         └─signals─► GameScreen updates
-##                                                      score, moves, goals,
-##                                                      and decides win / lose
+##                                         └── signals ──► GameScreen updates
+##                                                         moves, score, goals,
+##                                                         and decides win/lose
 ##
-## The game screen owns the "level rules" (move limit, goals, stars, coins),
-## while BoardModel owns the "puzzle rules" (matching, specials, gravity).
+## The game screen owns the LEVEL rules (moves, goals, boosters, lives,
+## rewards). BoardModel owns the PUZZLE rules (matching, specials, gravity).
+##
+## THE END OF A LEVEL
+##   win:  "Level complete!" -> leftover moves become rockets (bonus) ->
+##         results popup (+1 star, coins) -> back to the garden
+##   out of moves: offer 5 extra moves for coins ->
+##         yes: keep playing / no: lose a life -> "try again" or garden
 extends Control
+
+const GARDEN_SCENE := "res://scenes/garden.tscn"
+## Coins per leftover move, paid after the bonus.
+const COINS_PER_LEFTOVER_MOVE := 5
 
 var level_index: int = 0
 var level: Dictionary = {}
@@ -22,68 +35,85 @@ var moves_left: int = 0
 var score: int = 0
 var _level_over: bool = false
 
-# UI nodes we need to update later.
+# UI nodes we update later.
 var board_view: BoardView
 var _board_area: Control
 var _moves_label: Label
 var _score_label: Label
 var _goals_box: HBoxContainer
+var _shovel_button: Button
+var _tool_hint: Label
 
 
 func _ready() -> void:
-	level_index = GameState.selected_level
+	level_index = GameState.current_level
 	level = LevelData.get_level(level_index)
 	moves_left = int(level["moves"])
 
-	# --- Rules: build the model and the goals from the level data ---
+	# --- Rules: model and goals from the level data ---
 	model = BoardModel.new()
 	model.setup(level["layout"], int(level["colors"]))
+	_apply_pre_level_boosters()
 	goals = LevelGoals.new()
-	goals.setup(level["goals"], model.total_ice())
+	goals.setup(level["goals"], model.total_weeds(), model.total_crates())
 
 	# --- Visuals ---
 	_build_ui()
 	board_view.setup(model)
 
-	# --- Wiring: react to what happens on the board ---
-	# `signal.connect(callable)` registers a function to be called when the
-	# signal is emitted. This is how child nodes talk "up" to their parent
-	# without knowing anything about it.
+	# --- Wiring ---
+	# `some_signal.connect(function)`: call `function` whenever the signal is
+	# emitted. Children talk UP to their parent this way, without knowing
+	# anything about the parent. ("Call down, signal up.")
 	board_view.move_committed.connect(_on_move_committed)
 	board_view.pieces_cleared.connect(_on_pieces_cleared)
 	board_view.turn_finished.connect(_on_turn_finished)
+	board_view.tool_used.connect(_on_tool_used)
 	goals.changed.connect(_refresh_goals)
-	# Re-fit the board whenever the screen size changes (rotation, window resize).
+	GameState.boosters_changed.connect(_refresh_shovel)
 	_board_area.resized.connect(_fit_board)
 
 	_refresh_hud()
 	_refresh_goals()
-	# Wait one frame so containers have finished calculating their sizes.
+	_refresh_shovel()
+	# Containers finish computing their sizes later this frame, so we wait
+	# with call_deferred() before measuring the board area.
 	_fit_board.call_deferred()
 
 
+## Boosters chosen on the level start popup become special pieces on the board.
+func _apply_pre_level_boosters() -> void:
+	var specials := {
+		"rocket": BoardModel.Special.ROCKET_H,
+		"bomb": BoardModel.Special.BOMB,
+		"rainbow": BoardModel.Special.RAINBOW,
+	}
+	for id in GameState.pending_boosters:
+		if specials.has(id):
+			model.place_special_randomly(specials[id])
+	GameState.pending_boosters.clear()
+
+
 func _draw() -> void:
-	UIStyle.draw_vertical_gradient(self, Rect2(Vector2.ZERO, size), UIStyle.WATER_TOP, UIStyle.WATER_BOTTOM)
+	UIStyle.draw_vertical_gradient(self, Rect2(Vector2.ZERO, size), UIStyle.BG_TOP, UIStyle.BG_BOTTOM)
 
 
 func _notification(what: int) -> void:
-	# Redraw the background gradient when our size changes.
 	if what == NOTIFICATION_RESIZED:
 		queue_redraw()
 
 
-# ---------------------------------------------------------------------------
-# Building the UI
-# ---------------------------------------------------------------------------
-# Layout (top to bottom):
-#   [ Menu ]  Level name / score            Moves: 20
-#   [ goal ] [ goal ] [ goal ]
-#   ┌──────────────────────────┐
-#   │        the board         │   <- _board_area, takes all remaining space
-#   └──────────────────────────┘
+# =============================================================================
+# BUILDING THE UI
+# =============================================================================
+#   [ Quit ]      Level 12 / Score         Moves 20
+#   [goal] [goal]
+#   ┌──────────────────────────────┐
+#   │           board              │   <- takes all remaining space
+#   └──────────────────────────────┘
+#   [ shovel x2 ]   "Tap a piece or crate"
 
 func _build_ui() -> void:
-	# MarginContainer keeps everything away from the screen edges.
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
@@ -91,7 +121,6 @@ func _build_ui() -> void:
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(margin)
 
-	# VBoxContainer stacks its children vertically.
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 14)
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -104,16 +133,15 @@ func _build_ui() -> void:
 	top.add_theme_constant_override("separation", 16)
 	top_panel.add_child(top)
 
-	var menu_button := UIStyle.button("Menu", 26, Vector2(120, 70), Color(0.2, 0.4, 0.7))
-	menu_button.pressed.connect(_go_to_menu)
-	top.add_child(menu_button)
+	var quit := UIStyle.button("Quit", 26, Vector2(120, 70), UIStyle.BLUE)
+	quit.pressed.connect(_on_quit_pressed)
+	top.add_child(quit)
 
 	var info := VBoxContainer.new()
-	# SIZE_EXPAND_FILL: "take all the spare horizontal space".
-	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL   # take the spare width
 	top.add_child(info)
-	info.add_child(UIStyle.label("%d. %s" % [level_index + 1, level["name"]], 28))
-	_score_label = UIStyle.label("", 24, UIStyle.TEXT_DIM)
+	info.add_child(UIStyle.label("Level %d" % (level_index + 1), 30))
+	_score_label = UIStyle.label("", 22, UIStyle.TEXT_DIM)
 	info.add_child(_score_label)
 
 	var moves_box := VBoxContainer.new()
@@ -136,17 +164,31 @@ func _build_ui() -> void:
 	_board_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_board_area.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(_board_area)
-
-	# A Node2D can live inside a Control. Its position is then relative to the
-	# Control's top-left corner.
+	# A Node2D can live inside a Control; its position is then relative to
+	# the Control's top-left corner.
 	board_view = BoardView.new()
 	_board_area.add_child(board_view)
 
+	# ----- Booster bar -----
+	var bottom := HBoxContainer.new()
+	bottom.add_theme_constant_override("separation", 16)
+	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_child(bottom)
+	_shovel_button = UIStyle.button("", 26, Vector2(170, 90), UIStyle.ORANGE)
+	_shovel_button.pressed.connect(_on_shovel_pressed)
+	bottom.add_child(_shovel_button)
+	# An icon inside the button, on the left.
+	var shovel_icon := IconView.new("shovel", 56.0)
+	shovel_icon.position = Vector2(10, 17)
+	_shovel_button.add_child(shovel_icon)
+	_tool_hint = UIStyle.label("", 24, UIStyle.TEXT)
+	_tool_hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bottom.add_child(_tool_hint)
 
-## Scales and centers the board inside the available area.
-## BoardView always works in its own "board pixels" (80 per cell), and we just
-## scale the whole node. Input still works because BoardView converts event
-## positions with make_input_local(), which takes the scale into account.
+
+## Scales and centers the board in its area. BoardView always works in its
+## own 80-pixels-per-cell units, so we just scale the node. Input still works
+## because BoardView uses make_input_local(), which includes our scale.
 func _fit_board() -> void:
 	if model == null:
 		return
@@ -156,22 +198,22 @@ func _fit_board() -> void:
 		return
 	var factor := minf(area.x / board.x, area.y / board.y)
 	board_view.scale = Vector2(factor, factor)
-	board_view.position = (area - board * factor) / 2.0
+	# Centered horizontally, at the TOP vertically (close to the goals).
+	board_view.position = Vector2((area.x - board.x * factor) / 2.0, 0.0)
 
 
-# ---------------------------------------------------------------------------
-# HUD updates
-# ---------------------------------------------------------------------------
+# =============================================================================
+# HUD UPDATES
+# =============================================================================
 
 func _refresh_hud() -> void:
 	_moves_label.text = str(moves_left)
 	_score_label.text = "Score: %d" % score
-	# Warn the player when moves are running out.
-	var moves_color := Color(1, 0.35, 0.3) if moves_left <= 5 else UIStyle.ACCENT
+	var moves_color := UIStyle.HEART if moves_left <= 5 else UIStyle.ACCENT
 	_moves_label.add_theme_color_override("font_color", moves_color)
 
 
-## Rebuilds the goal widgets. Simple and fast enough for a handful of goals.
+## Rebuilds the goal widgets. Simple, and fast enough for 1-3 goals.
 func _refresh_goals() -> void:
 	for child in _goals_box.get_children():
 		child.queue_free()
@@ -180,41 +222,45 @@ func _refresh_goals() -> void:
 		item.add_theme_constant_override("separation", 8)
 		item.add_child(_make_goal_icon(goal))
 		var done := LevelGoals.is_goal_done(goal)
-		var text := "Done" if done else "x %d" % LevelGoals.remaining(goal)
-		if goal["type"] == "score" and not done:
-			text = "%d" % int(goal["target"])
-		item.add_child(UIStyle.label(text, 28, Color(0.5, 1, 0.5) if done else UIStyle.TEXT))
+		var text := "Done" if done else str(LevelGoals.remaining(goal))
+		item.add_child(UIStyle.label(text, 30, Color(0.6, 1, 0.5) if done else UIStyle.TEXT))
 		_goals_box.add_child(item)
 
 
-## A small picture for a goal: the piece to collect, an ice block, or a star.
 func _make_goal_icon(goal: Dictionary) -> Control:
-	var holder := Control.new()
-	holder.custom_minimum_size = Vector2(56, 56)
 	match String(goal["type"]):
 		"collect":
-			# Reuse the real piece drawing code at a smaller scale.
-			var tile := TileView.new()
-			tile.setup(BoardModel.Piece.new(0, int(goal["color"]), BoardModel.Special.NONE), 80.0)
-			tile.position = Vector2(28, 28)
-			tile.scale = Vector2(0.65, 0.65)
-			holder.add_child(tile)
-		"ice":
-			var ice := Panel.new()
-			ice.add_theme_stylebox_override("panel", UIStyle.box(Color(0.75, 0.95, 1.0, 0.8), 6, Color(1, 1, 1), 3))
-			ice.position = Vector2(8, 8)
-			ice.size = Vector2(40, 40)
-			holder.add_child(ice)
+			return UIStyle.piece_icon(int(goal["color"]), BoardModel.Special.NONE)
+		"weeds":
+			return _square_icon(Color(0.3, 0.6, 0.2), Color(0.15, 0.35, 0.1))
 		_:
-			var star := StarRow.new(1, 18.0, 1)
-			star.size = Vector2(56, 56)
-			holder.add_child(star)
+			return _square_icon(Color(0.65, 0.45, 0.22), Color(0.35, 0.22, 0.1))
+
+
+func _square_icon(fill: Color, border: Color) -> Control:
+	var holder := Control.new()
+	holder.custom_minimum_size = Vector2(56, 56)
+	var square := Panel.new()
+	square.add_theme_stylebox_override("panel", UIStyle.box(fill, 6, border, 4))
+	square.position = Vector2(6, 6)
+	square.size = Vector2(44, 44)
+	holder.add_child(square)
 	return holder
 
 
-# ---------------------------------------------------------------------------
-# Reacting to the board
-# ---------------------------------------------------------------------------
+func _refresh_shovel() -> void:
+	var count := GameState.booster_count("shovel")
+	if board_view != null and board_view.tool_mode == "shovel":
+		_shovel_button.text = "     Cancel"
+		_tool_hint.text = "Tap a piece or crate"
+	else:
+		_shovel_button.text = "     x%d" % count if count > 0 else "     +"
+		_tool_hint.text = ""
+
+
+# =============================================================================
+# REACTING TO THE BOARD
+# =============================================================================
 
 func _on_move_committed() -> void:
 	moves_left -= 1
@@ -224,102 +270,192 @@ func _on_move_committed() -> void:
 func _on_pieces_cleared(result: BoardModel.ClearResult) -> void:
 	score += result.score
 	goals.on_pieces_removed(result.removed)
-	if not result.ice_hits.is_empty():
-		goals.on_ice_remaining(model.total_ice())
-	goals.on_score_changed(score)
+	if not result.weed_hits.is_empty() or not result.crate_hits.is_empty():
+		goals.on_obstacles_remaining(model.total_weeds(), model.total_crates())
 	_refresh_hud()
 
 
-## Called once the board has completely settled after a move.
+func _on_tool_used() -> void:
+	GameState.use_booster("shovel")
+	_refresh_shovel()
+
+
+## Called when the board has completely settled after a move or a tool.
 func _on_turn_finished() -> void:
 	if _level_over:
 		return
 	if goals.is_complete():
 		_win()
 	elif moves_left <= 0:
-		_lose()
+		_offer_extra_moves()
 
+
+# =============================================================================
+# SHOVEL BOOSTER
+# =============================================================================
+
+func _on_shovel_pressed() -> void:
+	if _level_over or board_view.busy:
+		return
+	if board_view.tool_mode == "shovel":
+		board_view.tool_mode = ""         # tapping again cancels
+	elif GameState.booster_count("shovel") > 0:
+		board_view.tool_mode = "shovel"
+	else:
+		_offer_buy_shovel()
+		return
+	_refresh_shovel()
+
+
+func _offer_buy_shovel() -> void:
+	board_view.input_enabled = false
+	var price: int = GameState.BOOSTER_PRICES["shovel"]
+	var box := Modal.open(self, "Shovel")
+	box.add_child(UIStyle.label("Removes any piece or hits a crate.\nIt doesn't use a move!", 26))
+	var row := Modal.button_row(box)
+	var buy := UIStyle.button("Buy (%d coins)" % price, 26, Vector2(260, 80), UIStyle.ORANGE)
+	buy.disabled = GameState.coins < price
+	buy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# A LAMBDA (a small unnamed function stored in a variable). It can use
+	# `box` because lambdas "capture" the local variables around them.
+	var on_buy := func() -> void:
+		GameState.buy_booster("shovel")
+		board_view.input_enabled = true
+		Modal.close(box)
+	buy.pressed.connect(on_buy)
+	row.add_child(buy)
+	var cancel := UIStyle.button("No thanks", 26, Vector2(200, 80), UIStyle.BLUE)
+	cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var on_cancel := func() -> void:
+		board_view.input_enabled = true
+		Modal.close(box)
+	cancel.pressed.connect(on_cancel)
+	row.add_child(cancel)
+
+
+# =============================================================================
+# WINNING
+# =============================================================================
 
 func _win() -> void:
 	_level_over = true
 	board_view.input_enabled = false
-	var stars := LevelData.stars_for_score(level, score)
-	# Unused moves are worth extra coins. This rewards playing efficiently.
-	var coins := int(level["coins"]) + moves_left * 5
-	GameState.complete_level(level_index, stars, coins)
-	_show_results(true, stars, coins)
+	board_view.tool_mode = ""
+
+	await _show_banner("Level Complete!")
+
+	# BONUS: leftover moves turn into rockets that all fire.
+	var leftover := moves_left
+	if leftover > 0:
+		await _show_banner("Bonus!")
+		moves_left = 0
+		_refresh_hud()
+		await board_view.play_bonus(leftover)
+
+	var coins := int(level["coins"]) + leftover * COINS_PER_LEFTOVER_MOVE
+	GameState.complete_level(coins)
+
+	var box := Modal.open(self, "Level %d complete!" % (level_index + 1))
+	box.add_child(UIStyle.label("Score: %d" % score, 30))
+	var rewards := HBoxContainer.new()
+	rewards.alignment = BoxContainer.ALIGNMENT_CENTER
+	rewards.add_theme_constant_override("separation", 40)
+	rewards.add_child(UIStyle.icon_counter("star", "+1", 36))
+	rewards.add_child(UIStyle.icon_counter("coin", "+%d" % coins, 36))
+	box.add_child(rewards)
+	var go := UIStyle.button("Continue")
+	go.pressed.connect(_go_to_garden)
+	box.add_child(go)
+
+
+## A big text that zooms in, stays for a moment, and fades out.
+## It's a coroutine: callers `await` it to wait until it's gone.
+func _show_banner(text: String) -> void:
+	var banner := UIStyle.label(text, 72, UIStyle.ACCENT)
+	banner.size = Vector2(size.x, 120)
+	banner.position = Vector2(0, size.y / 2.0 - 60.0)
+	# pivot_offset is the point a Control scales and rotates around. Without
+	# it, the text would grow from its top-left corner.
+	banner.pivot_offset = banner.size / 2.0
+	banner.z_index = 40
+	add_child(banner)
+	var tween := create_tween()
+	tween.tween_property(banner, "scale", Vector2.ONE, 0.35).from(Vector2(0.3, 0.3)) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_interval(0.7)
+	tween.tween_property(banner, "modulate:a", 0.0, 0.3)
+	await tween.finished
+	banner.queue_free()
+
+
+# =============================================================================
+# LOSING
+# =============================================================================
+
+func _offer_extra_moves() -> void:
+	board_view.input_enabled = false
+	var box := Modal.open(self, "Out of moves!")
+	box.add_child(UIStyle.label("So close! Get %d more moves?" % GameState.EXTRA_MOVES_AMOUNT, 28))
+
+	var buy := UIStyle.button("+%d moves  (%d coins)" % [GameState.EXTRA_MOVES_AMOUNT, GameState.EXTRA_MOVES_PRICE],
+			28, Vector2(0, 90), UIStyle.ORANGE)
+	buy.disabled = GameState.coins < GameState.EXTRA_MOVES_PRICE
+	var on_buy := func() -> void:
+		if GameState.try_spend_coins(GameState.EXTRA_MOVES_PRICE):
+			moves_left += GameState.EXTRA_MOVES_AMOUNT
+			_refresh_hud()
+			board_view.input_enabled = true
+			Modal.close(box)
+	buy.pressed.connect(on_buy)
+	box.add_child(buy)
+
+	var give_up := UIStyle.button("Give up", 26, Vector2(0, 70), UIStyle.BLUE)
+	var on_give_up := func() -> void:
+		Modal.close(box)
+		_lose()
+	give_up.pressed.connect(on_give_up)
+	box.add_child(give_up)
 
 
 func _lose() -> void:
 	_level_over = true
 	board_view.input_enabled = false
-	_show_results(false, 0, 0)
+	GameState.lose_life()
 
-
-# ---------------------------------------------------------------------------
-# Results popup
-# ---------------------------------------------------------------------------
-
-func _show_results(won: bool, stars: int, coins: int) -> void:
-	# A dark, full-screen layer that also blocks clicks to what is beneath.
-	var overlay := ColorRect.new()
-	overlay.color = Color(0, 0, 0, 0.6)
-	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(overlay)
-
-	# CenterContainer keeps its child in the middle of the screen.
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.add_child(center)
-
-	var panel := UIStyle.panel()
-	panel.custom_minimum_size = Vector2(520, 0)
-	center.add_child(panel)
-
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 20)
-	panel.add_child(box)
-
-	box.add_child(UIStyle.label("Level Complete!" if won else "Out of Moves", 48, UIStyle.ACCENT))
-	if won:
-		box.add_child(StarRow.new(stars, 34.0))
-		box.add_child(UIStyle.label("Score: %d" % score, 32))
-		box.add_child(UIStyle.label("+%d coins" % coins, 32, UIStyle.ACCENT))
-		if level_index + 1 < LevelData.count():
-			var next := UIStyle.button("Next Level")
-			next.pressed.connect(_play_level.bind(level_index + 1))
-			box.add_child(next)
-		var aquarium := UIStyle.button("Visit Aquarium", 30, Vector2(0, 80), Color(0.15, 0.45, 0.8))
-		aquarium.pressed.connect(_go_to_aquarium)
-		box.add_child(aquarium)
-	else:
-		box.add_child(UIStyle.label("Score: %d" % score, 32))
-		var retry := UIStyle.button("Try Again")
-		retry.pressed.connect(_play_level.bind(level_index))
+	var box := Modal.open(self, "Level failed")
+	box.add_child(UIStyle.label("You lost a life.", 28))
+	box.add_child(UIStyle.icon_counter("heart", "%d left" % GameState.lives, 32))
+	if GameState.has_life():
+		var retry := UIStyle.button("Try again")
+		retry.pressed.connect(func() -> void: get_tree().reload_current_scene())
 		box.add_child(retry)
-
-	var menu := UIStyle.button("Main Menu", 30, Vector2(0, 80), Color(0.2, 0.4, 0.7))
-	menu.pressed.connect(_go_to_menu)
-	box.add_child(menu)
-
-	# Fade the popup in.
-	overlay.modulate.a = 0.0
-	create_tween().tween_property(overlay, "modulate:a", 1.0, 0.3)
+	var garden := UIStyle.button("Back to garden", 28, Vector2(0, 80), UIStyle.BLUE)
+	garden.pressed.connect(_go_to_garden)
+	box.add_child(garden)
 
 
-# ---------------------------------------------------------------------------
-# Navigation
-# ---------------------------------------------------------------------------
+func _on_quit_pressed() -> void:
+	if _level_over:
+		return
+	board_view.input_enabled = false
+	var box := Modal.open(self, "Quit level?")
+	box.add_child(UIStyle.label("You will lose a life.", 28))
+	var row := Modal.button_row(box)
+	var quit := UIStyle.button("Quit", 28, Vector2(220, 80), UIStyle.HEART.darkened(0.2))
+	quit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var on_quit := func() -> void:
+		GameState.lose_life()
+		_go_to_garden()
+	quit.pressed.connect(on_quit)
+	row.add_child(quit)
+	var stay := UIStyle.button("Keep playing", 28, Vector2(220, 80))
+	stay.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var on_stay := func() -> void:
+		board_view.input_enabled = true
+		Modal.close(box)
+	stay.pressed.connect(on_stay)
+	row.add_child(stay)
 
-func _play_level(index: int) -> void:
-	GameState.selected_level = index
-	# Reloading the current scene runs _ready() again with the new level.
-	get_tree().reload_current_scene()
 
-
-func _go_to_menu() -> void:
-	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
-
-
-func _go_to_aquarium() -> void:
-	get_tree().change_scene_to_file("res://scenes/aquarium.tscn")
+func _go_to_garden() -> void:
+	get_tree().change_scene_to_file(GARDEN_SCENE)

@@ -1,257 +1,196 @@
-# Implementation Plan: Fishdom-style Sample Game
+# Implementation Plan: Garden Match Sample
 
-This plan explains **what** we are building, **why** each technical decision was
-made, and **in what order** to build it. It is written for someone learning game
-development, so each phase lists the concepts you will practise in it.
-
----
-
-## 1. Game concept
-
-Fishdom combines two loops:
-
-| Loop | What the player does | Why it matters |
-|------|----------------------|----------------|
-| **Core loop** (minutes) | Solve a match-3 puzzle level: swap pieces, make matches, meet goals within a move limit. | Moment-to-moment fun. |
-| **Meta loop** (days) | Spend coins earned from levels on fish and decorations for a personal aquarium. | A long-term reason to keep playing. |
-
-```
-   ┌──────────────┐  win   ┌───────────┐  spend  ┌──────────────┐
-   │ Puzzle level │ ─────► │   Coins   │ ──────► │  Aquarium    │
-   └──────────────┘        └───────────┘         └──────────────┘
-          ▲                                             │
-          └─────────── "I want the next fish!" ─────────┘
-```
-
-### Scope of this sample (MVP)
-
-* 6 handcrafted match-3 levels with move limits and goals
-  (collect colors, break ice, reach a score).
-* Special pieces: **rocket** (match 4), **bomb** (L/T match), **rainbow** (match 5),
-  plus chain reactions and special swaps.
-* Cascades with increasing score multiplier, hints after idling, auto-shuffle when stuck.
-* Stars (1–3) per level, coin rewards, level unlocking.
-* Aquarium with 6 fish and 6 decorations to buy, fish that swim with steering
-  behaviour and chase food when you tap the water.
-* Persistent save game (JSON in `user://`).
-* Runs on **Android, iOS, Windows, macOS, Linux and Web** from one codebase.
-
-### Out of scope (see section 7, "Next steps")
-
-Sound, real art assets, boosters, lives/energy, a world map, monetisation,
-cloud saves, analytics.
+This plan explains **what** we build, **why** each decision was made, and
+**in which order** to build it. Each phase lists the game-dev concepts you
+practise in it.
 
 ---
 
-## 2. Technology choice
+## 1. Concept
 
-**Engine: Godot 4.3+ with GDScript.**
+A match-3 puzzle game with a garden-restoration meta game, in the style of the
+popular "match-3 + makeover" genre.
 
-| Requirement | How Godot meets it |
-|-------------|--------------------|
-| Not iOS-only | One project exports to Android, iOS, desktop and Web. |
-| Good for learning | Free and open source, small download, beginner-friendly Python-like language, excellent docs. |
-| 2D focus | Dedicated 2D engine (not 3D with a 2D mode), pixel-based coordinates, built-in tweens. |
-| No licence fees | MIT licence, no royalties. |
+### Original, not a copy
 
-**Renderer: Compatibility (OpenGL ES 3 / WebGL 2).** It has the widest device
-support, including browsers, and the game only needs simple 2D.
+The request was a clone "as identical as possible" of a commercial game. We
+built an **original game in the same genre** instead:
 
-**Art: drawn in code** with `_draw()`. The sample needs no image files, and you
-can see how the drawing API works. Section 7 describes how to swap in sprites.
+| Kept: genre mechanics (not owned by anyone) | Replaced: anything that belongs to the original game |
+|----------------------------------------------|------------------------------------------------------|
+| Win levels → stars → spend on tasks | Name, logo, title |
+| Choose 1 of 3 styles per task | Characters (our helper is "Olive", an original gardener) |
+| Lives with a refill timer, coins, boosters | Story, dialog, garden areas and layout |
+| Rockets, bombs, rainbow, a square-match flyer | Art, music, sounds, UI look |
+| Crates, ground tiles (weeds), extra moves offer | Level designs |
+
+This is also the better learning path. Copying assets teaches nothing about
+design, and building your own variations teaches everything.
+
+### Game loops
+
+```
+         ┌──────────── core loop (minutes) ────────────┐
+         │  swap → match → specials → goals → win/lose │
+         └───────────────────────┬─────────────────────┘
+                                 │ +1 star, +coins
+                                 ▼
+         ┌──────────── meta loop (days) ───────────────┐
+         │ spend stars → restore object → choose style │
+         │ → story line → new tasks unlock → area done │
+         └───────────────────────┬─────────────────────┘
+                                 │ "one more level for the next task"
+                                 ▼
+                           back to Play
+```
+
+### The economy (3 currencies, each with one job)
+
+| Currency | Earned by | Spent on | Purpose |
+|----------|-----------|----------|---------|
+| ⭐ Stars | 1 per won level | Garden tasks | Story progress. Can't be bought. |
+| 🪙 Coins | Won levels + leftover moves | Boosters, +5 moves, lives refill | Helps when stuck |
+| ❤️ Lives | 1 per 20 minutes (max 5) | Lost on failing/quitting a level | Paces sessions |
+
+---
+
+## 2. Technology
+
+* **Godot 4.3+, GDScript:** free, exports to Android/iOS/Web/desktop, and the
+  language is beginner-friendly.
+* **Compatibility renderer:** widest device support, including browsers.
+* **Procedural art (`_draw()`):** no asset files, and every visual is readable
+  code. Swapping in sprites later is a local change (see 7).
+* **UI built in code:** each scene is a root node plus a script, so everything
+  can be read top to bottom with comments.
 
 ---
 
 ## 3. Architecture
 
-### 3.1 Folder layout
-
 ```
-project.godot              Engine settings (window size, autoloads, renderer)
-scenes/                    One tiny .tscn per screen (root node + script)
-  main_menu.tscn
-  game.tscn
-  aquarium.tscn
-scripts/
-  autoload/game_state.gd   Global: coins, progress, owned items, save/load
-  data/level_data.gd       All levels as plain data
-  data/aquarium_catalog.gd All shop items as plain data
-  match3/board_model.gd    PURE LOGIC: grid, matching, specials, gravity
-  match3/level_goals.gd    PURE LOGIC: goal tracking
-  match3/board_view.gd     Visuals + input + turn animation loop
-  match3/tile_view.gd      Drawing of a single piece
-  match3/board_effect.gd   Short-lived explosion/beam effects
-  aquarium/aquarium_screen.gd      Tank, feeding, shop UI
-  aquarium/aquarium_fish.gd        Fish drawing + steering AI
-  aquarium/aquarium_decoration.gd  Decoration drawing
-  ui/main_menu.gd          Level select
-  ui/game_screen.gd        HUD, goals, win/lose, results popup
-  ui/ui_style.gd           Shared colors, button/label factories, shape helpers
-  ui/star_row.gd           Custom-drawn star rating control
-tests/test_runner.gd       Headless unit tests for the pure-logic classes
-docs/LEARNING_GUIDE.md     Concepts explained + exercises
+                      ┌──────────────────────┐
+                      │ GameState (autoload) │  stars, coins, lives, boosters,
+                      │   save/load JSON     │  tasks, current level
+                      └──────────┬───────────┘
+              ┌──────────────────┴───────────────────┐
+              ▼                                      ▼
+   garden.tscn (GardenScreen)              game.tscn (GameScreen)
+   ├─ GardenObject × N  (before/after)     ├─ BoardModel  (pure rules)
+   ├─ DialogBox (story)                    ├─ LevelGoals  (pure rules)
+   └─ Modal popups (tasks, level start)    ├─ BoardView   (animation + input)
+              ▲                            │   └─ TileView × N, BoardEffect
+              │ GardenData (tasks, story)  └─ Modal popups (win, lose, +moves)
+              │                                      ▲
+              └──────────── LevelData (levels + generator) ─────┘
 ```
 
-### 3.2 Key design decisions
+### Key decisions
 
-1. **Model/View separation for the puzzle.**
-   `BoardModel` holds rules and state and never waits or draws.
-   `BoardView` animates what the model reports.
-   *Benefits:* unit-testable rules, deterministic behaviour with a seed,
-   the visuals can be replaced without touching the rules.
+1. **Model/View split for the puzzle.** `BoardModel` changes data instantly
+   and returns a `ClearResult`. `BoardView` animates it. The rules can be
+   tested without graphics and are reproducible with a seed.
+2. **Turn loop as a coroutine** (`await` between steps). It's readable, and
+   one `_resolve_loop()` is shared by swaps, the shovel and the win bonus.
+3. **"Call down, signal up."** BoardView emits `move_committed`,
+   `pieces_cleared`, `turn_finished`, `tool_used`. GameScreen applies the
+   level rules. The board knows nothing about levels or coins.
+4. **Data-driven content.** Levels, tasks, dialog and object placement are
+   plain data. A generator makes unlimited levels from the level number
+   (deterministic).
+5. **Task dependency graph.** `requires` on each task unlocks them gradually,
+   so the player always has 1–3 clear choices.
+6. **Real-time lives.** Store the *start time* of the countdown, not the
+   remaining seconds. It survives restarts and is simple to compute.
+7. **Step-based gravity simulation.** It handles holes, crates and diagonal
+   sliding with one simple, provably finishing loop.
 
-2. **Turn loop as a coroutine.**
-   `BoardView._play_turn()` is written top-to-bottom with `await` between
-   animation steps (swap → clear → fall → repeat), instead of a state machine
-   spread across callbacks. This is the most readable approach for a learner.
-   (A larger game might switch to an explicit state machine, see 7.)
-
-3. **Signals for communication upward.**
-   `BoardView` emits `move_committed`, `pieces_cleared`, `turn_finished`.
-   `GameScreen` listens and applies the *level* rules (moves, score, goals).
-   The board doesn't know what a "level" is, so it can be reused for other modes.
-
-4. **Data-driven content.**
-   Levels and shop items are dictionaries in `level_data.gd` / `aquarium_catalog.gd`.
-   Adding content does not require changing logic.
-
-5. **One autoload for persistent state.**
-   `GameState` is the only global. It also carries the "selected level" between
-   scenes. Everything else is owned by its scene.
-
-6. **UI built in code.**
-   Each screen's `.tscn` contains only a root node; children are created in
-   `_ready()`. This keeps the sample readable as plain text. In your own
-   projects you would usually build menus in the editor.
-
-7. **Resolution independence.**
-   Design resolution 720×1280 portrait with `canvas_items` stretch and `expand`
-   aspect. The board is drawn at 80 px per cell and the whole node is scaled to fit.
-
-### 3.3 Turn sequence
+### Turn sequence
 
 ```
-Player swipes A→B
-      │
-      ▼
-model.swap(A,B) ──► animate swap
-      │
-      ▼
-forced = model.special_swap_activations(A,B)
-result = model.resolve_matches([A,B], forced)
-      │
-      ├── result empty? ──► swap back (no move used) ──► done
-      │
-      ▼
-emit move_committed  (GameScreen: moves -= 1)
-      │
-      ▼
-┌─► emit pieces_cleared(result)  (GameScreen: score, goals)
-│   animate clear / effects / new specials
-│   gravity = model.apply_gravity() ──► animate falling + spawning
-│   result = model.resolve_matches([], [], cascade+1)
-└── while result not empty
-      │
-      ▼
-no moves left? ──► model.shuffle() ──► animate
-      │
-      ▼
-emit turn_finished  (GameScreen: win? lose?)
+swipe A→B ─► model.swap ─► animate
+            forced = special_swap_activations(A,B)     (specials / combos)
+            result = resolve_matches([A,B], forced)
+            empty? ─► swap back, no move used
+            move_committed ─► _resolve_loop:
+                 ┌─► pieces_cleared(result) → score, goals
+                 │   animate: butterfly flights → explosions → shrink → pop specials
+                 │   gravity = apply_gravity() → animate falls / slides / spawns
+                 │   result = resolve_matches([], [], cascade+1)
+                 └── until empty
+            stuck? ─► shuffle
+            turn_finished ─► win? (banner → bonus rockets → rewards)
+                             out of moves? (offer +5 moves → lose life)
 ```
 
 ---
 
-## 4. Implementation phases
+## 4. Phases
 
-Each phase leaves you with something runnable. Commit after each one.
+Every phase ends with something runnable. Commit after each.
 
-### Phase 0: Project setup *(~1 hour)*
-- [x] Create Godot project, portrait 720×1280, Compatibility renderer.
-- [x] Configure stretch mode and touch-to-mouse emulation.
-- [x] Add `.gitignore` for `.godot/`.
+### Phase 1: Board basics *(done)*
+- [x] Layout parsing: holes, weeds (1–2 layers), crates (1–2 hp)
+- [x] Initial fill without lines OR squares, guaranteed possible move
+- [x] TileView shapes/colors, board background, weeds and crates drawing
 
-*Concepts:* project settings, `res://` vs `user://`, version control for Godot.
+*Concepts:* 2D grids, layered cell data, `_draw()`.
 
-### Phase 1: Static board *(~half a day)*
-- [x] `BoardModel.setup()` from text layout (holes, ice).
-- [x] Random fill **without** starting matches.
-- [x] `TileView` draws 6 distinct shapes/colors.
-- [x] `BoardView` creates tiles and draws the cell background.
+### Phase 2: Input and swapping *(done)*
+- [x] Swipe + tap-tap input via `_input` + `make_input_local`
+- [x] Valid-swap check (lines, squares, specials), swap-back animation
 
-*Concepts:* 2D arrays, `_draw()`, nodes and the scene tree, coordinate conversion.
+*Concepts:* input events, coordinate spaces, tweens, `await`.
 
-### Phase 2: Input and swapping *(~half a day)*
-- [x] Swipe detection and tap-tap selection.
-- [x] `is_valid_swap()`, invalid swaps animate back.
-- [x] Tween-based swap animation.
+### Phase 3: Matching and gravity *(done)*
+- [x] Run detection (H/V), 2×2 square detection, grouping into shapes
+- [x] Step-based gravity: straight falls, spawns, diagonal slides around crates
+- [x] Cascades with score multiplier, auto-shuffle
 
-*Concepts:* input events, `make_input_local`, tweens, `await`.
+*Concepts:* grid algorithms, simulation loops, termination arguments.
 
-### Phase 3: Matching, gravity, cascades *(~1 day)*
-- [x] Horizontal/vertical run detection, merging runs into L/T groups.
-- [x] Remove pieces, gravity with holes, refill from the top.
-- [x] Cascade loop with score multiplier.
-- [x] `find_possible_move()` + shuffle when stuck.
-- [x] Unit tests for all of the above.
+### Phase 4: Specials, combos, obstacles *(done)*
+- [x] Rocket / bomb / rainbow / butterfly creation and effects
+- [x] Chain reactions (work-list algorithm)
+- [x] Combos: cross, big cross, big bomb, rainbow convert, rainbow+rainbow
+- [x] Crates hit by adjacent matches and explosions; weeds under pieces
+- [x] Butterfly targeting priority (crates > weeds > anything)
 
-*Concepts:* grid algorithms, work-list algorithms, unit testing, seeded RNG.
+*Concepts:* BFS-style processing, priority selection, effect nodes.
 
-### Phase 4: Special pieces *(~1 day)*
-- [x] Rocket (4), bomb (L/T), rainbow (5), spawn at swipe position.
-- [x] Chain reactions (specials triggering specials).
-- [x] Special swaps (rainbow + color, rainbow + rainbow, rocket/bomb fire on swap).
-- [x] Visual effects (beams, blasts, sparkles), score popups.
+### Phase 5: Level flow *(done)*
+- [x] 10 handcrafted tutorial-style levels + deterministic generator
+- [x] Goals: collect color, clear weeds, break crates
+- [x] HUD, shovel booster with tool mode, pre-level boosters
+- [x] Win banner, leftover-moves bonus rockets, rewards popup
+- [x] Out-of-moves offer (+5 for coins), lose life, quit confirmation
 
-*Concepts:* breadth-first processing, fire-and-forget effect nodes.
+*Concepts:* data-driven design, procedural generation, signals, coroutines.
 
-### Phase 5: Level rules and HUD *(~1 day)*
-- [x] Level data (moves, colors, layout, goals, star thresholds, coins).
-- [x] `LevelGoals` (collect / ice / score).
-- [x] HUD: moves, score, goal icons. Win/lose detection, results popup.
-- [x] Hints after 5 seconds of inactivity.
+### Phase 6: Meta game *(done)*
+- [x] GameState: stars, coins, lives with real-time refill, boosters, saving
+- [x] Garden screen with 2 areas, 14 restorable objects (before/after states)
+- [x] Task list with dependencies, star costs, style choices, restyling
+- [x] Dialog box with typewriter effect, intro, per-task lines, area completion
+- [x] Level start popup with booster selection, no-lives popup with refill
 
-*Concepts:* data-driven design, signals, containers and anchors.
+*Concepts:* autoloads, persistence, economy design, UI flows.
 
-### Phase 6: Meta game *(~1 day)*
-- [x] `GameState` autoload: coins, stars, unlocks, inventory.
-- [x] JSON save/load in `user://` (with float→int caveat).
-- [x] Main menu with level grid and stars.
-- [x] Aquarium: background, sand, bubbles, light rays.
-- [x] Fish with steering behaviour; decorations; shop with previews.
-- [x] Tap to feed: food sinks, fish chase and eat it.
-
-*Concepts:* autoloads/singletons, persistence, steering behaviours, recursion (coral).
-
-### Phase 7: Platform builds *(~half a day)*
-- [ ] Install export templates (Editor → Manage Export Templates).
-- [ ] Add export presets: Android, iOS, Web, Windows/macOS/Linux.
-- [ ] Android: install the Android SDK + JDK 17, set paths in Editor Settings, create a debug keystore.
-- [ ] iOS: requires a Mac with Xcode; export an Xcode project and build from there.
-- [ ] Web: export, then serve with a local web server (`python -m http.server`).
-- [ ] Test on at least one real phone (touch feel and performance).
-
-*Concepts:* export templates, signing, platform differences.
-
-### Phase 8: Polish (suggested next work)
-See section 7.
+### Phase 7: Verify and ship *(to do)*
+- [ ] Open in Godot, fix any typo-level errors, run the unit tests
+- [ ] Play-test levels 1–15 and tune `moves`
+- [ ] Export presets for Android, Web and one desktop OS; test on a real phone
 
 ---
 
-## 5. Testing strategy
+## 5. Testing
 
-| Layer | How | Where |
-|-------|-----|-------|
-| Puzzle rules | Automated unit tests on `BoardModel` / `LevelGoals` with fixed seeds and hand-written boards (`load_colors`). | `tests/test_runner.gd` |
-| Level balance | Play each level; ideally a bot that plays random valid moves 1000× and reports win rate. | Future work |
-| UI / feel | Manual testing on desktop + one phone. Check different aspect ratios with the editor's window size override. | Manual |
-| Save system | Win a level, quit, restart, verify coins/stars. Corrupt the save file and verify the game starts fresh. | Manual |
-
-Run tests headless:
-
-```bash
-godot --headless --import                         # once, builds the class cache
-godot --headless --script res://tests/test_runner.gd
-```
+| What | How |
+|------|-----|
+| Puzzle rules | `tests/test_runner.gd`: hand-built boards with `load_colors()` (matches, squares, crates, weeds, combos, butterfly targeting, diagonal gravity, shovel, generator) |
+| Balance | Play-test. Better: a bot that plays random valid moves 1000× per level and reports the win rate (exercise in the guide) |
+| Economy | Count stars needed per area vs. levels needed. Aim for about 1–2 sessions per area |
+| Persistence | Win, quit, restart: stars/coins/tasks kept. Change the clock to test lives |
 
 ---
 
@@ -259,46 +198,22 @@ godot --headless --script res://tests/test_runner.gd
 
 | Risk | Mitigation |
 |------|------------|
-| Generated board has no valid moves | `fill_initial()` retries; `shuffle()` after every turn when stuck, with recolor fallback. |
-| Input during animations corrupts state | `BoardView.busy` flag blocks input until `turn_finished`. |
-| Different screen shapes break layout | Container-based UI + scaled board + `expand` stretch aspect. |
-| Save format changes break old saves | `SAVE_VERSION` field, defensive `get()` with defaults, unknown item ids ignored. |
-| JSON numbers load as floats | Explicit `int()` conversions in `GameState.load_game()`. |
-| Tween with no animations errors | `_finish()` helper kills empty tweens instead of awaiting them. |
+| Cells under crates never refill | Diagonal sliding in gravity. Levels keep an open column (generator avoids crates in the center) |
+| Input during animation | `busy` flag; popups disable `input_enabled` |
+| Stuck board | `find_possible_move()` + shuffle with recolor fallback |
+| Save format changes | `version` field, defaults for missing keys, ids never renamed |
+| JSON numbers become floats | Explicit `int()` on load, including dictionary values |
+| Signals to freed scenes | Autoload signals connect to *methods* (auto-disconnected), not lambdas |
 
 ---
 
-## 7. Next steps (ideas to extend the sample)
+## 7. Next steps
 
-Roughly in order of learning value:
-
-1. **Sound & music:** add an `AudioManager` autoload with `AudioStreamPlayer`s;
-   play sounds on swap, match, special, win. Add a mute toggle saved in `GameState`.
-2. **Real art:** replace `TileView._draw()` with a `Sprite2D` and textures
-   (e.g. from kenney.nl, CC0). Add `GPUParticles2D` for explosions.
-3. **Boosters:** hammer (remove one piece), extra moves. Purchasable with coins.
-4. **More blockers:** stone (needs adjacent match), chains (piece can't move),
-   "collect item" pieces that must reach the bottom row (Fishdom-style).
-5. **World map:** a scrolling path of levels instead of a grid.
-6. **Fish needs:** fish get hungry over time; a happy tank pays out bonus coins
-   (gives the aquarium gameplay, not just decoration).
-7. **Level editor:** an in-game or editor-plugin tool that writes level data.
-8. **State machine:** replace the coroutine turn loop with explicit states
-   (IDLE, SWAPPING, CLEARING, FALLING, SHUFFLING) when adding features like
-   boosters that interrupt the flow.
-9. **Localisation:** `tr()` + CSV translation files.
-10. **Monetisation/analytics/cloud save:** platform plugins (only once the core is fun!).
-
----
-
-## 8. Definition of done (MVP)
-
-The code for every item below is written. The unchecked items still need a
-play-through in the engine to confirm them.
-
-- [x] Unit tests are written for the puzzle rules and goals.
-- [ ] All 6 levels are winnable and losable (play-test and tune `moves` / `stars`).
-- [ ] Coins and stars persist across restarts.
-- [ ] All 12 shop items can be bought and appear in the aquarium.
-- [ ] Unit tests pass when run in Godot (not run yet, see README).
-- [ ] Exported and tested on Android + Web + one desktop OS.
+1. **Sound and music**: an `AudioManager` autoload; sounds for swap, match, combo, task done.
+2. **Real art**: sprites for pieces, painted garden backgrounds, `CPUParticles2D` effects.
+3. **More obstacles**: drop items that must reach the bottom, chains, spreading weeds.
+4. **Camera**: a larger garden you can pan around with `Camera2D` and drag gestures.
+5. **More areas** in `garden_data.gd`, each with new object kinds.
+6. **Daily rewards and events**: login streaks, limited-time tasks.
+7. **Level editor**: an editor plugin or an in-game tool that writes level dictionaries.
+8. **Localization**: `tr()` and CSV translations for all text and dialog.

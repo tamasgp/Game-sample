@@ -1,108 +1,112 @@
-# Fishdom Sample: a match-3 + aquarium game in Godot 4
+# Garden Match Sample: match-3 + garden restoration in Godot 4
 
-A small, **heavily commented** learning project that recreates the *gameplay
-style* of games like Fishdom: solve match-3 puzzle levels to earn coins, then
-spend them on fish and decorations for your own aquarium.
+A **heavily commented** learning project in the genre of "match-3 + home/garden
+makeover" games: solve puzzle levels to earn stars, and spend the stars to
+restore an overgrown garden while a gardener tells the story.
 
-All graphics are drawn in code, so the project contains no image files. Every
-script starts with a header comment explaining what it does and which game-dev
-concepts it shows.
+> **This is an original game in that genre, not a copy of any specific game.**
+> It uses the genre's common mechanics (stars for tasks, style choices, lives,
+> boosters, crates, special pieces), but its name, character, story, levels and
+> art are all original. Copying a commercial game's name, characters, art or
+> levels would infringe the owner's rights, and it wouldn't teach you more than
+> building your own version.
 
 * **Engine:** [Godot 4.3+](https://godotengine.org/download) (free, open source)
 * **Language:** GDScript
 * **Platforms:** Android, iOS, Web, Windows, macOS, Linux
-
-> This is an original sample for learning. It uses no names, art or assets
-> from Fishdom.
+* **Art:** everything is drawn in code, so there are no image files
 
 ---
 
 ## Quick start
 
-1. Download **Godot 4.3 or newer** (standard version, not .NET).
-2. Start Godot → **Import** → select this folder's `project.godot`.
-3. Press **F5** (or the ▶ button) to run.
+1. Install **Godot 4.3 or newer** (standard version, not .NET).
+2. Godot → **Import** → pick this folder's `project.godot`.
+3. Press **F5** to run. The window is phone-shaped; use the mouse like a finger.
 
-The desktop window is a phone-shaped 450×800. Use the mouse like a finger.
+## How to play
 
-### Controls
+**In the garden (home screen)**
+* **Play**: opens the next level. Pick pre-level boosters, then start.
+* **Tasks**: spend stars to restore things. Some tasks let you choose a style.
+* Tap a restored object later to change its style for free.
+* Top bar: **lives** (with refill timer), **coins**, **stars**.
 
-| Action | How |
-|--------|-----|
-| Swap pieces | Swipe a piece toward a neighbour, **or** tap a piece then tap a neighbour |
-| Fire a special | Swap it with any neighbour |
-| Feed fish | Tap the water in the aquarium |
+**In a level**
+* Swipe a piece toward a neighbour (or tap one piece, then a neighbour).
+* Match 3+ in a line, or a 2×2 square. Reach every goal before moves run out.
 
-### Rules
+| Match | Creates | Effect |
+|-------|---------|--------|
+| 4 in a line | Rocket | clears a row or column |
+| L or T shape | Bomb | clears a 3×3 area |
+| 5 in a line | Rainbow | clears every piece of one color |
+| 2×2 square | Butterfly | clears its neighbours, then flies to a crate/weed and clears it |
 
-* Line up 3+ identical pieces horizontally or vertically.
-* **4 in a row** → Rocket (clears its row or column)
-* **L or T shape** → Bomb (clears the 3×3 area around it)
-* **5 in a row** → Rainbow (swap it with a piece to clear every piece of that color)
-* Ice cells crack when you match on top of them.
-* Meet all goals before you run out of moves. Unused moves give bonus coins.
+**Combos:** swap two specials together:
+* rocket + rocket: a cross (row and column)
+* rocket + bomb: 3 rows and 3 columns
+* bomb + bomb: a 5×5 blast
+* rainbow + special: every piece of that color becomes that special
+* rainbow + rainbow: clears the whole board
+
+**Obstacles:**
+* **Weeds** under pieces (match on top to clear them)
+* **Crates** (break them with matches next to them, or with specials)
+
+**Boosters:**
+* Pre-level: rocket, bomb, rainbow. They start on the board.
+* In-level: the **shovel** clears one piece or hits one crate, and doesn't use a move.
+
+**End of level:**
+* **Win**: leftover moves turn into rockets (bonus), then you get +1 star and coins.
+* **Out of moves**: buy +5 moves with coins, or give up and lose a life.
 
 ---
 
 ## Project structure
 
 ```
-scenes/          Screen scenes (each is a root Control + a script)
+scenes/            garden.tscn (home, main scene) and game.tscn (a level)
 scripts/
-  autoload/      GameState: coins, progress, saving (global singleton)
-  data/          Level definitions and shop catalog (pure data)
-  match3/        The puzzle: model (rules), view (visuals + input), effects
-  aquarium/      The tank, fish AI, decorations, shop
-  ui/            Menus, HUD and shared styling helpers
-tests/           Headless unit tests for the puzzle rules
-docs/            Learning guide with concepts and exercises
+  autoload/        GameState: stars, coins, lives, boosters, tasks, saving
+  data/            level_data.gd (levels + generator), garden_data.gd (tasks, story)
+  match3/          The puzzle: board_model (rules), board_view (animation + input),
+                   tile_view (pieces), board_effect, level_goals
+  garden/          garden_screen (home screen), garden_object (restorable objects)
+  ui/              game_screen (level HUD/flow), modal (popups), dialog_box
+                   (story text), ui_style, icon_view, star_row
+tests/             Headless unit tests for the puzzle rules
+docs/              Learning guide with concepts and exercises
 ```
 
 **Suggested reading order:**
 
-1. `scripts/match3/board_model.gd`: the rules of match-3 (no graphics)
-2. `scripts/match3/board_view.gd`: how the rules are animated and played
-3. `scripts/ui/game_screen.gd`: levels, goals, winning and losing
-4. `scripts/autoload/game_state.gd`: progress and saving
-5. `scripts/aquarium/aquarium_fish.gd`: steering behaviour for fish
+1. `scripts/match3/board_model.gd`: all the puzzle rules, no graphics
+2. `scripts/match3/board_view.gd`: the turn loop with `await`, animations, input
+3. `scripts/ui/game_screen.gd`: goals, moves, winning/losing, boosters
+4. `scripts/autoload/game_state.gd`: the 3-currency economy, lives timer, saving
+5. `scripts/garden/garden_screen.gd`: the meta game, tasks, dialog
 6. `docs/LEARNING_GUIDE.md`: concepts and exercises
 
 For the design and build roadmap, see **[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)**.
 
----
-
 ## Running the unit tests
 
 ```bash
-# once: let Godot import the project and build its class list
-godot --headless --import
-# run the tests (exit code 0 = all passed)
-godot --headless --script res://tests/test_runner.gd
+godot --headless --import                              # once: builds the class list
+godot --headless --script res://tests/test_runner.gd   # exit code 0 = all passed
 ```
 
-(`godot` is the Godot executable. On Windows/macOS use its full path.)
+## Exporting
 
----
-
-## Exporting to other platforms
-
-In the editor: **Editor → Manage Export Templates → Download**, then
-**Project → Export… → Add…** and pick a platform.
-
-| Platform | What you need |
-|----------|---------------|
-| Windows / macOS / Linux | Nothing extra. |
-| Web | Nothing extra. Serve the exported folder with a web server, e.g. `python -m http.server`. Opening the HTML file directly does not work. |
-| Android | Android SDK + OpenJDK 17. Set their paths in *Editor Settings → Export → Android*. A debug keystore is created for you. |
-| iOS | A Mac with Xcode and an Apple developer account. Godot exports an Xcode project that you build and sign in Xcode. |
-
-The official guide covers each platform in detail:
+**Editor → Manage Export Templates → Download**, then **Project → Export…**.
+Desktop and Web need nothing extra. Android needs the Android SDK + JDK 17.
+iOS needs a Mac with Xcode. Guide:
 <https://docs.godotengine.org/en/stable/tutorials/export/index.html>
-
----
 
 ## Status
 
 This code was written without a Godot editor available to run it. If Godot
-reports an error when you open or run the project, it will most likely be a
-small typo-level fix. The error message gives the file and line.
+reports an error when you open or run it, the message gives the file and line,
+and it will most likely be a small fix.

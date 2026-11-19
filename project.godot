@@ -12,10 +12,10 @@ config_version=5
 
 [application]
 
-config/name="Fishdom Sample"
-config/description="A learning sample: match-3 puzzle + aquarium decorating, written in GDScript."
+config/name="Garden Match Sample"
+config/description="A learning sample: match-3 puzzles + garden restoration, written in GDScript."
 ; The first scene Godot opens when the game starts.
-run/main_scene="res://scenes/main_menu.tscn"
+run/main_scene="res://scenes/garden.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
 config/icon="res://icon.svg"
 
@@ -55,4 +55,4 @@ pointing/emulate_mouse_from_touch=true
 ; choice for a simple 2D game.
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
-environment/defaults/default_clear_color=Color(0.02, 0.1, 0.25, 1)
+environment/defaults/default_clear_color=Color(0.15, 0.35, 0.15, 1)
