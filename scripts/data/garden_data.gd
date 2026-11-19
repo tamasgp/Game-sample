@@ -50,7 +50,7 @@ const AREAS: Array = [
 		"name": "Old Courtyard",
 		"background": "courtyard",
 		"objects": {
-			"gate": {"kind": "gate", "pos": Vector2(0.5, 0.2), "scale": 1.0},
+			"gate": {"kind": "gate", "pos": Vector2(0.5, 0.32), "scale": 1.0},
 			"tree": {"kind": "tree", "pos": Vector2(0.18, 0.38), "scale": 1.0},
 			"path": {"kind": "path", "pos": Vector2(0.5, 0.6), "scale": 1.0},
 			"fountain": {"kind": "fountain", "pos": Vector2(0.5, 0.52), "scale": 1.0},

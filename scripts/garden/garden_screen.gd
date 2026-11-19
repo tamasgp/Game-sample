@@ -135,9 +135,10 @@ func _draw() -> void:
 	UIStyle.draw_vertical_gradient(self, rect, Color(0.5, 0.78, 0.38), Color(0.28, 0.55, 0.22))
 	var t := Time.get_ticks_msec() / 1000.0
 	if _area.get("background", "") == "courtyard":
-		# Sky strip and an old brick wall at the top.
-		UIStyle.draw_vertical_gradient(self, Rect2(0, 0, size.x, size.y * 0.12), Color(0.55, 0.8, 1.0), Color(0.8, 0.92, 1.0))
-		var wall := Rect2(0, size.y * 0.1, size.x, size.y * 0.145)
+		# Sky strip and an old brick wall, starting below the HUD bar so the
+		# gate's arch stays visible.
+		UIStyle.draw_vertical_gradient(self, Rect2(0, 0, size.x, size.y * 0.17), Color(0.55, 0.8, 1.0), Color(0.8, 0.92, 1.0))
+		var wall := Rect2(0, size.y * 0.16, size.x, size.y * 0.16)
 		draw_rect(wall, Color(0.62, 0.45, 0.36))
 		var brick_h := wall.size.y / 6.0
 		for row in 6:

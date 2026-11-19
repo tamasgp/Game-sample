@@ -89,7 +89,8 @@ func _draw() -> void:
 
 # Small helpers to keep the drawing code short.
 func _ellipse(center: Vector2, radii: Vector2, color: Color) -> void:
-	draw_colored_polygon(UIStyle.ellipse_points(center, radii, 28), color)
+	# 48 points keep even the big pond ellipse looking smooth.
+	draw_colored_polygon(UIStyle.ellipse_points(center, radii, 48), color)
 
 
 func _pick(colors: Array[Color]) -> Color:
