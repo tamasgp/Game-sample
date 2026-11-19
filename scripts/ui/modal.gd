@@ -19,8 +19,9 @@ static func open(parent: Node, title: String, min_width: float = 560.0) -> VBoxC
 	var overlay := ColorRect.new()
 	overlay.color = Color(0, 0, 0, 0.6)
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	# Draw on top of everything else in the parent.
-	overlay.z_index = 50
+	# Draw on top of everything else, including the HUD (z 1000) and garden
+	# objects. Only the dialog box (2100) is higher.
+	overlay.z_index = 2000
 	parent.add_child(overlay)
 
 	# CenterContainer keeps its only child in the middle.

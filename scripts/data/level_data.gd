@@ -69,7 +69,7 @@ const LEVELS: Array = [
 			"........",
 			"........",
 			"........",
-			"ccc..ccc",
+			"c.c..c.c",
 			"........",
 			"........",
 			"........",
@@ -101,8 +101,8 @@ const LEVELS: Array = [
 			"........",
 			".w.ww.w.",
 			"........",
-			"cc....cc",
-			"cc....cc",
+			"c......c",
+			"c......c",
 			"........",
 			".w.ww.w.",
 			"........",
@@ -154,15 +154,20 @@ const LEVELS: Array = [
 		],
 		"goals": [{"type": "weeds"}, {"type": "collect", "color": 5, "amount": 15}],
 	},
-	# 9 - A wall of tough crates guarding the weeds. The gap in the middle
-	#     is important: it's the only way new pieces can reach the bottom!
+	# 9 - A row of tough crates guarding the weeds.
+	#
+	# LEVEL DESIGN RULE: never put two crates side by side in a row. A piece
+	# can only slide into a cell diagonally from the upper-left or upper-right.
+	# So a cell under a 3-wide crate wall would have crates above it AND on both
+	# diagonals, and it would stay empty until a crate breaks. The test
+	# test_every_level_can_refill checks this rule for every level.
 	{
 		"moves": 28, "colors": 5, "coins": 50,
 		"layout": [
 			"........",
 			"........",
 			"........",
-			"CCC..CCC",
+			"C.C..C.C",
 			"wwwwwwww",
 			"wwwwwwww",
 			"........",
@@ -221,7 +226,9 @@ static func generate_level(index: int) -> Dictionary:
 			var roll := rng.randf()
 			# Never put crates in the center column (x == 3, mirrored to 4), so
 			# new pieces can always fall down to the bottom of the board.
-			if y >= 2 and x < 3 and roll < crate_chance:
+			# Also never put two crates side by side (see the rule at level 9).
+			var crate_on_left := x > 0 and left[x - 1].to_lower() == "c"
+			if y >= 2 and x < 3 and roll < crate_chance and not crate_on_left:
 				left += "C" if rng.randf() < difficulty * 0.5 else "c"
 			elif roll < crate_chance + weed_chance:
 				left += "W" if rng.randf() < difficulty * 0.4 else "w"

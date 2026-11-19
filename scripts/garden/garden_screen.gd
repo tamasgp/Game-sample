@@ -198,6 +198,11 @@ func _build_hud() -> void:
 	# Full-screen containers must IGNORE the mouse, or they would swallow the
 	# taps meant for the garden (handled in _gui_input above).
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# z_index decides drawing order across the whole screen, not just among
+	# siblings. Garden objects use z_index 0..100 to sort themselves by depth,
+	# so the HUD needs a higher value to stay on top of them. (Popups use
+	# 2000 and the dialog box 2100, see modal.gd and dialog_box.gd.)
+	margin.z_index = 1000
 	add_child(margin)
 
 	var column := VBoxContainer.new()

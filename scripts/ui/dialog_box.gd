@@ -28,7 +28,7 @@ var _typing: Tween
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP   # swallow every tap
-	z_index = 60
+	z_index = 2100   # above the HUD (1000) and popups (2000)
 	visible = false
 
 	var panel := UIStyle.panel()

@@ -54,10 +54,22 @@ func setup(p_id: String, p_kind: String) -> void:
 	_time = randf() * 10.0
 
 
+## Lantern positions relative to the origin (shared by drawing and tapping).
+const LANTERN_POSTS: Array[Vector2] = [Vector2(-90, -250), Vector2(90, -250), Vector2(-90, 50), Vector2(90, 50)]
+
+
 ## Is a point (in global/screen coordinates) on this object?
 func contains_point(global_point: Vector2) -> bool:
 	# to_local() undoes our position AND scale, so the result is in design units.
 	var local := to_local(global_point)
+	if kind == "lanterns":
+		# The lanterns are four small things spread around the fountain, so
+		# test each lamp separately. One big circle would also cover the
+		# fountain and "steal" its taps.
+		for post in LANTERN_POSTS:
+			if (local - (post + Vector2(0, -120))).length() < 45.0:
+				return true
+		return false
 	# Standing objects are drawn above the origin, so test around their middle.
 	return (local - Vector2(0, -hit_radius * 0.6)).length() < hit_radius
 
@@ -249,8 +261,7 @@ func _draw_bench() -> void:
 
 func _draw_lanterns() -> void:
 	# Four posts along the path (the origin is the path's center).
-	var posts := [Vector2(-90, -250), Vector2(90, -250), Vector2(-90, 50), Vector2(90, 50)]
-	for post in posts:
+	for post in LANTERN_POSTS:
 		var p: Vector2 = post
 		draw_rect(Rect2(p.x - 4, p.y - 110, 8, 110), Color(0.2, 0.2, 0.22))
 		if restored:

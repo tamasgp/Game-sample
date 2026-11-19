@@ -286,6 +286,21 @@ func test_pieces_slide_diagonally_under_crate() -> void:
 	check(not gravity["moves"].is_empty(), "pieces moved")
 
 
+func test_every_level_can_refill() -> void:
+	# Level design check: empty the whole board and let gravity refill it.
+	# If some open cell stays empty, pieces can never reach it (for example
+	# a cell under a wall of crates), which would leave holes in the board.
+	for index in 40:   # all handcrafted levels and a batch of generated ones
+		var level := LevelData.get_level(index)
+		var model := BoardModel.new()
+		model.setup(level["layout"], int(level["colors"]), index)
+		for x in model.width:
+			for y in model.height:
+				model.set_piece(Vector2i(x, y), null)
+		model.apply_gravity()
+		check(_all_open_cells_filled(model), "level %d has cells that pieces can never reach" % (index + 1))
+
+
 # =============================================================================
 # SHUFFLE, BOOSTERS, GOALS, LEVELS
 # =============================================================================

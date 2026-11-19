@@ -312,6 +312,12 @@ func get_piece(cell: Vector2i) -> Piece:
 	return _cells[cell.x][cell.y]
 
 
+## Puts a piece (or null) into an open cell. Used by tests and tools.
+func set_piece(cell: Vector2i, piece: Piece) -> void:
+	if is_open(cell):
+		_cells[cell.x][cell.y] = piece
+
+
 func get_weeds(cell: Vector2i) -> int:
 	return int(_weeds[cell.x][cell.y]) if in_bounds(cell) else 0
 

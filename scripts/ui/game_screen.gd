@@ -435,7 +435,9 @@ func _lose() -> void:
 
 
 func _on_quit_pressed() -> void:
-	if _level_over:
+	# Not while a turn is animating: the turn might end the level while the
+	# popup is open, and then "Keep playing" or "Quit" would do the wrong thing.
+	if _level_over or board_view.busy:
 		return
 	board_view.input_enabled = false
 	var box := Modal.open(self, "Quit level?")
@@ -444,14 +446,15 @@ func _on_quit_pressed() -> void:
 	var quit := UIStyle.button("Quit", 28, Vector2(220, 80), UIStyle.HEART.darkened(0.2))
 	quit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var on_quit := func() -> void:
-		GameState.lose_life()
+		if not _level_over:   # double check: never charge a life after a win
+			GameState.lose_life()
 		_go_to_garden()
 	quit.pressed.connect(on_quit)
 	row.add_child(quit)
 	var stay := UIStyle.button("Keep playing", 28, Vector2(220, 80))
 	stay.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var on_stay := func() -> void:
-		board_view.input_enabled = true
+		board_view.input_enabled = not _level_over
 		Modal.close(box)
 	stay.pressed.connect(on_stay)
 	row.add_child(stay)

@@ -198,7 +198,8 @@ Every phase ends with something runnable. Commit after each.
 
 | Risk | Mitigation |
 |------|------------|
-| Cells under crates never refill | Diagonal sliding in gravity. Levels keep an open column (generator avoids crates in the center) |
+| Cells under crates never refill | Diagonal sliding in gravity, plus a level design rule: no two crates side by side (the generator follows it). `test_every_level_can_refill` checks 40 levels |
+| Garden objects drawing over UI | z_index layers: objects 0–100, HUD 1000, popups 2000, dialog 2100 |
 | Input during animation | `busy` flag; popups disable `input_enabled` |
 | Stuck board | `find_possible_move()` + shuffle with recolor fallback |
 | Save format changes | `version` field, defaults for missing keys, ids never renamed |
